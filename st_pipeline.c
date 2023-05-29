@@ -1,25 +1,31 @@
 #include <stdio.h>
-#include <math.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <time.h>
-#include <thread>
+
 
 // Part A:
 
 int isPrime(unsigned int num)
 {
-    if (num == 2) {
+    if (num == 2)
+    {
+        printf("true\n");
         return 1;
     }
-    if ((num % 2) == 0)
-        return 0;
-    for (int i = 3; i * i <= num; i += 2) {
+
+
+    for (int i = 2; i*i <= num; i ++)
+    {
         if ((num % i) == 0)
+        {
+            printf("false\n");
             return 0;
+        }
     }
+    printf("true\n");
     return 1;
 }
 
@@ -31,7 +37,6 @@ typedef struct Node
     struct Node* next;
 } Node, * Pnode;
 
-// Define the queue structure
 typedef struct Queue
 {
     Pnode head;
@@ -45,7 +50,7 @@ Pnode new_node(void* task)
     Pnode newnode = (Pnode)malloc(sizeof(Node));
     if (newnode == NULL)
     {
-        perror("Pnode new");
+        perror("new_node");
         exit(-1);
     }
     newnode->task = task;
@@ -53,13 +58,12 @@ Pnode new_node(void* task)
     return newnode;
 }
 
-// Initialize the queue
 Pqueue initializeQueue()
 {
     Pqueue new_queue = (Pqueue)malloc(sizeof(Queue));
     if (new_queue == NULL)
     {
-        perror("Pqueue new");
+        perror("initializeQueue");
         exit(-1);
     }
     new_queue->head = NULL;
@@ -76,17 +80,10 @@ void enqueue(Pqueue queue, void* task)
     pthread_mutex_lock(&queue->mutex);
     Pnode new_task = new_node(task);
 
-    if (queue->size == 0)
-    {
-        queue->head = new_task;
-        queue->size = 1;
-    }
-    else
-    {
-        new_task->next = queue->head;
-        queue->head = new_task;
-        queue->size++;
-    }
+    new_task->next = queue->head;
+    queue->head = new_task;
+    queue->size++;
+
     pthread_mutex_unlock(&queue->mutex);
     pthread_cond_signal(&queue->cond);
 }
@@ -99,22 +96,27 @@ void* dequeue(Pqueue queue)
     {
         pthread_cond_wait(&queue->cond, &queue->mutex);
     }
-    Pnode current = queue->head;
 
+    Pnode current = queue->head;
+    Pnode previous = NULL;
     while (current->next != NULL)
     {
-        if (current->next->next == NULL)
-        {
-            break;
-        }
+        previous = current;
         current = current->next;
     }
-    void* task = current->next->task;
-    Pnode to_free = current->next;
-    current->next = NULL;
-    queue->size--;
-    free(to_free);
 
+    void *task = current->task;
+    if (previous != NULL)
+    {
+        previous->next = NULL;
+    }
+    else
+    {
+        queue->head = NULL;
+    }
+    queue->size--;
+
+    free(current);
     pthread_mutex_unlock(&queue->mutex);
     return task;
 }
@@ -124,116 +126,155 @@ void removeQueue(Pqueue queue)
     Pnode current = queue->head;
     while (current != NULL)
     {
-        Pnode to_free = current;
-        current = current->next;
-        free(to_free);
+        Pnode next = current->next;
+        free(current);
+        current = next;
     }
     free(queue);
 }
 
 // Part C:
 
-typedef int (*handler)(void*);
+typedef struct AO
+{
+    Pqueue queue;
+    void (*func)(struct AO *, void *);
+    pthread_t thread;
+    struct AO *next;
+} AO, *PAO;
 
-struct AO {
-    std::thread _thread;
-    handler _func;
-    Queue* _queue;
-    bool _is_alive;
-};
-
-void CreateActiveObject(struct AO* ao, struct Queue* queue, handler func) {
-    ao->_queue = queue;
-    ao->_func = func;
-    ao->_is_alive = true;
-
-    ao->_thread = std::thread(activeObjectThread, ao);
-}
-
-void activeObjectThread(struct AO* ao) {
-    while (ao->_is_alive) {
-        void* task = dequeue(ao->_queue);
-        if (task != NULL) {
-            ao->_func(task);
-        }
+static void *aoThread(void *arg)
+{
+    PAO ao = (PAO)arg;
+    void *task;
+    while ((task = dequeue(ao->queue)) != NULL)
+    {
+        ao->func(ao->next, task);
     }
+    return task;
 }
 
-Queue* getQueue(struct AO* ao) {
-    return ao->_queue;
-}
 
-void stop(struct AO* ao) {
-    ao->_is_alive = false;  // Set _is_alive flag to false to stop the active object
 
-    if (ao->_thread.joinable()) {
-        ao->_thread.join();
+PAO CreateActiveObject(PAO next, void (*func)(PAO, void *))
+{
+    PAO ao = (PAO)malloc(sizeof(AO));
+    if (ao == NULL)
+    {
+        perror("CreateActiveObject");
+        exit(-1);
     }
 
-    removeQueue(ao->_queue);
-    ao->_queue = NULL;
+    ao->queue = initializeQueue();
+    ao->next = next;
+    ao->func = func;
+    pthread_create(&ao->thread, NULL, aoThread, ao);
+    return ao;
+}
 
+Pqueue getQueue(PAO ao)
+{
+    return ao->queue;
+}
+
+void stop(AO* ao)
+{
+    pthread_cancel(ao->thread);
+    removeQueue(ao->queue);
     free(ao);
 }
 
-// Pipeline initialization and processing function
-void pipeline_st(int N, unsigned int seed) {
-    // Initialize the random number generator
-    srand(seed);
-
-    // Create the queues and AOs
-    Queue* queue1 = initializeQueue();
-    Queue* queue2 = initializeQueue();
-    Queue* queue3 = initializeQueue();
-    Queue* queue4 = initializeQueue();
-
-    struct AO ao1, ao2, ao3, ao4;
-    CreateActiveObject(&ao1, queue1, NULL);
-    CreateActiveObject(&ao2, queue2, NULL);
-    CreateActiveObject(&ao3, queue3, NULL);
-    CreateActiveObject(&ao4, queue4, NULL);
-
-    // Generate N numbers
-    for (int i = 0; i < N; i++) {
-        // Generate a 6-digit number
-        int number = (rand() % 900000) + 100000;
-
-        // Enqueue the number into the first queue
-        enqueue(queue1, (void*)(intptr_t)number);
-
-        // Sleep for 1 millisecond
-        usleep(1000);
-    }
-
-    // Stop the AOs
-    stop(&ao1);
-    stop(&ao2);
-    stop(&ao3);
-    stop(&ao4);
-
-    // Cleanup
-    removeQueue(queue1);
-    removeQueue(queue2);
-    removeQueue(queue3);
-    removeQueue(queue4);
+// Part D:
+void func1(PAO next, void *rand_seed)
+{
+    int num = *(int *)rand_seed;
+    srand(num);
+    int min = 100000;
+    int max = 999999;
+    int rand_num;
+    rand_num = (rand() % (max - min + 1)) + min;
+    void *task = &rand_num;
+    usleep(1000);
+    enqueue(getQueue(next), task);
+}
+void func2(PAO next, void *task)
+{
+    int num = *(int *)task;
+    printf("%d\n", num);
+    isPrime(num);
+    num += 11;
+    void *task2 = &num;
+    enqueue(getQueue(next), task2);
 }
 
-int main(int argc, char* argv[]) {
-    if (argc < 2 || argc > 3) {
-        printf("Usage: pipeline_st N [seed]\n");
-        return 1;
+void func3(PAO next, void *task)
+{
+    int num = *(int *)task;
+    isPrime(num);
+    num -= 13;
+    void *task3 = &num;
+    enqueue(getQueue(next), task3);
+}
+
+void func4(PAO next, void *task)
+{
+    int num = *(int *)task;
+    printf("%d\n", num);
+    num += 2;
+    printf("%d\n", num);
+}
+
+int main(int argc, char *argv[])
+{
+    int rand_seed = 0;
+    if (argc < 2 || argc > 3)
+    {
+        printf("usage: st_pipeline <N> [RAND] \n");
+        return (1);
+    }
+    if (argc == 2)
+    {
+        srand(time(NULL));
+        int min = 0;
+        int max = 9;
+        rand_seed = (rand() % (max - min + 1)) + min;
+    }
+    if (argc == 3)
+    {
+        rand_seed = atoi(argv[2]);
     }
 
-    int N = atoi(argv[1]);
-    unsigned int seed;
+    PAO fourthAO = CreateActiveObject(NULL, func4);
+    PAO thirdAO = CreateActiveObject(fourthAO, func3);
+    PAO secondAO = CreateActiveObject(thirdAO, func2);
+    PAO firstAO = CreateActiveObject(secondAO, func1);
 
-    if (argc == 3) {
-        seed = atoi(argv[2]);
-    } else {
-        seed = (unsigned int)time(NULL);
+    void *task = &rand_seed;
+
+    for (int i = 0; i < atoi(argv[1]); i++)
+    {
+        int rand_seed = *(int *)task;
+        enqueue(getQueue(firstAO), &rand_seed);
     }
 
-    pipeline_st(N, seed);
+    while (firstAO->queue->size > 0)
+    {
+    }
+    sleep(1);
+    stop(firstAO);
 
-    return 0;
+    while (secondAO->queue->size > 0)
+    {
+    }
+    stop(secondAO);
+
+    while (thirdAO->queue->size > 0)
+    {
+    }
+    stop(thirdAO);
+
+    while (fourthAO->queue->size > 0)
+    {
+    }
+    stop(fourthAO);
 }
