@@ -5,9 +5,9 @@
 #include <ctype.h>
 #include <time.h>
 
+// Part A: Check if a number is prime
 
-// Part A:
-
+// Function to check if a number is prime
 int isPrime(unsigned int num)
 {
     if (num == 2)
@@ -16,8 +16,7 @@ int isPrime(unsigned int num)
         return 1;
     }
 
-
-    for (int i = 2; i*i <= num; i ++)
+    for (int i = 2; i * i <= num; i++)
     {
         if ((num % i) == 0)
         {
@@ -29,13 +28,13 @@ int isPrime(unsigned int num)
     return 1;
 }
 
-// Part B:
+// Part B: Queue implementation
 
 typedef struct Node
 {
     void* task;
     struct Node* next;
-} Node, * Pnode;
+} Node, *Pnode;
 
 typedef struct Queue
 {
@@ -43,8 +42,9 @@ typedef struct Queue
     int size;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
-} Queue, * Pqueue;
+} Queue, *Pqueue;
 
+// Create a new node
 Pnode new_node(void* task)
 {
     Pnode newnode = (Pnode)malloc(sizeof(Node));
@@ -58,6 +58,7 @@ Pnode new_node(void* task)
     return newnode;
 }
 
+// Initialize a new queue
 Pqueue initializeQueue()
 {
     Pqueue new_queue = (Pqueue)malloc(sizeof(Queue));
@@ -105,7 +106,7 @@ void* dequeue(Pqueue queue)
         current = current->next;
     }
 
-    void *task = current->task;
+    void* task = current->task;
     if (previous != NULL)
     {
         previous->next = NULL;
@@ -121,6 +122,7 @@ void* dequeue(Pqueue queue)
     return task;
 }
 
+// Remove the queue and free memory
 void removeQueue(Pqueue queue)
 {
     Pnode current = queue->head;
@@ -133,20 +135,21 @@ void removeQueue(Pqueue queue)
     free(queue);
 }
 
-// Part C:
+// Part C: Active Object (AO) implementation
 
 typedef struct AO
 {
     Pqueue queue;
-    void (*func)(struct AO *, void *);
+    void (*func)(struct AO*, void*);
     pthread_t thread;
-    struct AO *next;
+    struct AO* next;
 } AO, *PAO;
 
-static void *aoThread(void *arg)
+// Thread function for AO
+static void* aoThread(void* arg)
 {
     PAO ao = (PAO)arg;
-    void *task;
+    void* task;
     while ((task = dequeue(ao->queue)) != NULL)
     {
         ao->func(ao->next, task);
@@ -154,9 +157,8 @@ static void *aoThread(void *arg)
     return task;
 }
 
-
-
-PAO CreateActiveObject(PAO next, void (*func)(PAO, void *))
+// Create a new Active Object
+PAO CreateActiveObject(PAO next, void (*func)(PAO, void*))
 {
     PAO ao = (PAO)malloc(sizeof(AO));
     if (ao == NULL)
@@ -172,11 +174,13 @@ PAO CreateActiveObject(PAO next, void (*func)(PAO, void *))
     return ao;
 }
 
+// Get the queue associated with an AO
 Pqueue getQueue(PAO ao)
 {
     return ao->queue;
 }
 
+// Stop an AO and clean up resources
 void stop(AO* ao)
 {
     pthread_cancel(ao->thread);
@@ -184,47 +188,52 @@ void stop(AO* ao)
     free(ao);
 }
 
-// Part D:
-void func1(PAO next, void *rand_seed)
+// Part D: Functions to be executed by AOs
+
+// Function 1: Generate a random number, enqueue it, and pass it to the next AO
+void func1(PAO next, void* rand_seed)
 {
-    int num = *(int *)rand_seed;
+    int num = *(int*)rand_seed;
     srand(num);
     int min = 100000;
     int max = 999999;
-    int rand_num;
-    rand_num = (rand() % (max - min + 1)) + min;
-    void *task = &rand_num;
+    int rand_num = (rand() % (max - min + 1)) + min;
+    void* task = &rand_num;
     usleep(1000);
     enqueue(getQueue(next), task);
 }
-void func2(PAO next, void *task)
+
+// Function 2: Check if a number is prime, modify it, and pass it to the next AO
+void func2(PAO next, void* task)
 {
-    int num = *(int *)task;
+    int num = *(int*)task;
     printf("%d\n", num);
     isPrime(num);
     num += 11;
-    void *task2 = &num;
+    void* task2 = &num;
     enqueue(getQueue(next), task2);
 }
 
-void func3(PAO next, void *task)
+// Function 3: Check if a number is prime, modify it, and pass it to the next AO
+void func3(PAO next, void* task)
 {
-    int num = *(int *)task;
+    int num = *(int*)task;
     isPrime(num);
     num -= 13;
-    void *task3 = &num;
+    void* task3 = &num;
     enqueue(getQueue(next), task3);
 }
 
-void func4(PAO next, void *task)
+// Function 4: Print a number and modify it
+void func4(PAO next, void* task)
 {
-    int num = *(int *)task;
+    int num = *(int*)task;
     printf("%d\n", num);
     num += 2;
     printf("%d\n", num);
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     int rand_seed = 0;
     if (argc < 2 || argc > 3)
@@ -244,13 +253,15 @@ int main(int argc, char *argv[])
         rand_seed = atoi(argv[2]);
     }
 
+    // Create the Active Objects (AOs) with their respective functions
     PAO fourthAO = CreateActiveObject(NULL, func4);
     PAO thirdAO = CreateActiveObject(fourthAO, func3);
     PAO secondAO = CreateActiveObject(thirdAO, func2);
     PAO firstAO = CreateActiveObject(secondAO, func1);
 
-    void *task = &rand_seed;
+    void* task = &rand_seed;
 
+    // Enqueue tasks to the first AO
     for (int i = 0; i < atoi(argv[1]); i++)
     {
         int rand_seed = *(int *)task;
