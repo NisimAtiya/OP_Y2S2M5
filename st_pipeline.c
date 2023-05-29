@@ -11,28 +11,25 @@
 
 int isPrime(unsigned int num)
 {
-    if(num==2){
+    if (num == 2) {
         return 1;
     }
     if ((num % 2) == 0)
         return 0;
-    for (int i = 3; i * i <= num; i += 2)
-    {
+    for (int i = 3; i * i <= num; i += 2) {
         if ((num % i) == 0)
             return 0;
     }
     return 1;
 }
 
-
-
 // Part B:
 
 typedef struct Node
 {
-    void *task;
-    struct Node *next;
-} Node, *Pnode;
+    void* task;
+    struct Node* next;
+} Node, * Pnode;
 
 // Define the queue structure
 typedef struct Queue
@@ -41,19 +38,19 @@ typedef struct Queue
     int size;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
-} Queue, *Pqueue;
+} Queue, * Pqueue;
 
-Pnode new_node(void *task)
+Pnode new_node(void* task)
 {
-    Pnode Newnode = (Pnode)malloc(sizeof(Node));
-    if (Newnode == NULL)
+    Pnode newnode = (Pnode)malloc(sizeof(Node));
+    if (newnode == NULL)
     {
         perror("Pnode new");
         exit(-1);
     }
-    new_node->task = task;
-    new_node->next = NULL;
-    return Newnode;
+    newnode->task = task;
+    newnode->next = NULL;
+    return newnode;
 }
 
 // Initialize the queue
@@ -73,8 +70,8 @@ Pqueue initializeQueue()
     return new_queue;
 }
 
-// Enqueue an task
-void enqueue(Pqueue queue, void *task)
+// Enqueue a task
+void enqueue(Pqueue queue, void* task)
 {
     pthread_mutex_lock(&queue->mutex);
     Pnode new_task = new_node(task);
@@ -94,8 +91,8 @@ void enqueue(Pqueue queue, void *task)
     pthread_cond_signal(&queue->cond);
 }
 
-// Dequeue an task
-void *dequeue(Pqueue queue)
+// Dequeue a task
+void* dequeue(Pqueue queue)
 {
     pthread_mutex_lock(&queue->mutex);
     while (queue->size <= 0)
@@ -112,7 +109,7 @@ void *dequeue(Pqueue queue)
         }
         current = current->next;
     }
-    void *task = current->next->task;
+    void* task = current->next->task;
     Pnode to_free = current->next;
     current->next = NULL;
     queue->size--;
@@ -148,33 +145,29 @@ struct AO {
 void CreateActiveObject(struct AO* ao, struct Queue* queue, handler func) {
     ao->_queue = queue;
     ao->_func = func;
-    ao->_is_alive = 1;
+    ao->_is_alive = true;
 
-    pthread_create(&ao->_thread, NULL, activeObjectThread, ao);
+    ao->_thread = std::thread(activeObjectThread, ao);
 }
 
-void* activeObjectThread(void* arg) {
-    struct AO* ao = (struct AO*)arg;
-
+void activeObjectThread(struct AO* ao) {
     while (ao->_is_alive) {
         void* task = dequeue(ao->_queue);
         if (task != NULL) {
             ao->_func(task);
         }
     }
-
-    return NULL;
 }
 
-Queue* getQueue(AO* ao) {
+Queue* getQueue(struct AO* ao) {
     return ao->_queue;
 }
-void stop(struct AO* ao) {
-    ao->_is_alive = 0;  // Set _is_alive flag to false to stop the active object
 
-    if (pthread_join(ao->_thread, NULL) != 0) {
-        perror("pthread_join");
-        exit(-1);
+void stop(struct AO* ao) {
+    ao->_is_alive = false;  // Set _is_alive flag to false to stop the active object
+
+    if (ao->_thread.joinable()) {
+        ao->_thread.join();
     }
 
     removeQueue(ao->_queue);
@@ -182,6 +175,7 @@ void stop(struct AO* ao) {
 
     free(ao);
 }
+
 // Pipeline initialization and processing function
 void pipeline_st(int N, unsigned int seed) {
     // Initialize the random number generator
