@@ -12,7 +12,7 @@ int isPrime(unsigned int num)
 {
     if (num == 2)
     {
-        printf("true\n");
+        printf("%d\ntrue\n",num);
         return 1;
     }
 
@@ -20,11 +20,11 @@ int isPrime(unsigned int num)
     {
         if ((num % i) == 0)
         {
-            printf("false\n");
+            printf("%d\nfalse\n",num);
             return 0;
         }
     }
-    printf("true\n");
+    printf("%d\ntrue\n",num);
     return 1;
 }
 
@@ -207,7 +207,6 @@ void func1(PAO next, void* rand_seed)
 void func2(PAO next, void* task)
 {
     int num = *(int*)task;
-    printf("%d\n", num);
     isPrime(num);
     num += 11;
     void* task2 = &num;
